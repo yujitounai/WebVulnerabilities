@@ -1,5 +1,5 @@
 ---
-title: TOCTOU攻撃
+title: TOCTOU
 ---
 
 
