@@ -1,6 +1,5 @@
 ---
 layout: default
-title: 目次
 ---
 
 <h1>目次</h1>
