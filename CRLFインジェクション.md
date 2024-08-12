@@ -1,5 +1,5 @@
 ---
-title: CRLFインジェクション攻撃
+title: CRLFインジェクション
 ---
 
 **CRLFインジェクション攻撃について**
@@ -31,6 +31,54 @@ header("Location: /welcome.php?user=" . $user);
 
   このリクエストにより、`Set-Cookie`ヘッダーがレスポンスに追加され、クライアントに不正なクッキーが設定されます。
 
+### **PHPのバージョンによる違い**
+
+#### **PHP 5.xおよびそれ以前のバージョン**
+
+- **脆弱性の高い状態**:
+  - PHP 5.x以前のバージョンでは、`header()`関数に渡される入力があまり厳密に検証されておらず、ユーザー入力をそのままHTTPヘッダーに挿入すると、CRLFインジェクションが発生しやすい状況でした。
+  - このため、攻撃者が`header()`関数を悪用して、HTTPレスポンスヘッダーを改ざんすることが可能でした。
+
+- **例**:
+  ```php
+  <?php
+  $user = $_GET['user'];
+  header("Location: /home.php?user=" . $user);
+  ?>
+  ```
+  - このコードでは、攻撃者が`user`パラメータに改行コード（`%0d%0a`）を挿入することで、HTTPヘッダーに追加のヘッダーを注入することが可能です。
+
+#### **PHP 5.1.2以降**
+
+- **対策の導入**:
+  - PHP 5.1.2以降では、`header()`関数が入力に改行コード（`\r`や`\n`）を含むことを許可しないように改善されました。具体的には、ヘッダーに改行が含まれる場合、PHPが自動的に例外をスローし、攻撃を防ぐようになりました。
+  - この変更により、CRLFインジェクションを防ぐためのセキュリティが強化され、意図せずにヘッダーが分割されることがなくなりました。
+
+- **例**:
+  ```php
+  <?php
+  $user = $_GET['user'];
+  // PHP 5.1.2以降では、次のコードが改行を含む場合にエラーを発生させます。
+  header("Location: /home.php?user=" . $user); 
+  ?>
+  ```
+  - ここで、`user`パラメータに`%0d%0a`が含まれていると、PHPがエラーをスローし、インジェクションを防ぎます。
+
+#### **PHP 7.x以降**
+
+- **さらなるセキュリティ強化**:
+  - PHP 7.x以降でも、ヘッダーの操作に対するセキュリティ対策がさらに強化され、CRLFインジェクションのリスクがさらに低減されました。
+  - 現在のバージョンのPHPでは、`header()`関数でCRLFが検出された場合、PHPは警告を出し、そのヘッダーを送信しません。
+
+- **例**:
+  ```php
+  <?php
+  $user = $_GET['user'];
+  header("Location: /home.php?user=" . $user); 
+  ?>
+  ```
+  - PHP 7.x以降では、`user`に改行コードが含まれている場合、エラーが発生し、レスポンスが正しく処理されないようにしています。
+
 #### **Python（Flask）**
 
 **脆弱なコード例:**
@@ -57,6 +105,70 @@ if __name__ == '__main__':
 
   この攻撃により、レスポンスが分割され、不正な内容が挿入される可能性があります。
 
+### **Pythonのバージョンによる差異**
+
+#### **標準ライブラリ**
+
+Pythonの標準ライブラリ自体には、HTTPヘッダーの生成や操作に特化した関数は含まれていません。代わりに、`http.client`モジュール（Python 3.x）や`httplib`モジュール（Python 2.x）を使用して、HTTPリクエストを作成したり、ヘッダーを操作することができます。CRLFインジェクションに関しては、Pythonの標準ライブラリ自体にバージョンによる大きな差異はありません。
+
+- **Python 2.x**:
+  - `httplib`モジュールを使用して、HTTPリクエストを生成します。CRLFインジェクションを防ぐためのバリデーションは標準で提供されていないため、開発者が入力をサニタイズする必要があります。
+
+- **Python 3.x**:
+  - `http.client`モジュールを使用します。Python 3.xでは、HTTPヘッダーを操作する際に、改行文字（`\r`や`\n`）がヘッダーに含まれていると例外が発生するようになっています。これにより、CRLFインジェクションのリスクは軽減されています。
+
+#### **Webフレームワーク（FlaskやDjango）**
+
+PythonでWebアプリケーションを構築する際には、FlaskやDjangoなどのWebフレームワークを使用することが一般的です。これらのフレームワークでは、ユーザー入力を適切にサニタイズしないと、CRLFインジェクションのリスクがあります。
+
+- **Flask**:
+  - Flaskでは、HTTPレスポンスヘッダーを手動で設定する場合、Pythonのバージョンに依存せずに、開発者が入力をサニタイズする必要があります。
+  - Flask自体には、バージョンによるCRLFインジェクションの防止に特化した変更はありませんが、Python 3.xを使用することで、ヘッダー操作時のバリデーションが強化されます。
+
+  **脆弱なコード例**:
+  ```python
+  from flask import Flask, request, make_response
+
+  app = Flask(__name__)
+
+  @app.route('/set_header')
+  def set_header():
+      user = request.args.get('user')
+      response = make_response("Setting header")
+      response.headers['X-User'] = user
+      return response
+  ```
+
+  **攻撃手法**:
+  - 攻撃者が以下のように改行を含む`user`パラメータを送信することで、ヘッダーに不正なデータを注入する可能性があります。
+
+  ```bash
+  http://example.com/set_header?user=admin%0d%0aX-Attack:1
+  ```
+
+  - Python 3.xでは、`http.client`モジュールが改行を含むヘッダーに対して例外を発生させるため、Flaskアプリケーションが例外を処理しない限り、この攻撃は失敗します。
+
+- **Django**:
+  - Djangoでは、バージョン1.8以降で、HTTPヘッダーに改行を含む値を設定しようとすると、自動的に例外が発生するようになっています。これにより、CRLFインジェクションのリスクが低減されています。
+
+  **脆弱なコード例**:
+  ```python
+  from django.http import HttpResponse
+
+  def set_header(request):
+      user = request.GET.get('user', '')
+      response = HttpResponse("Setting header")
+      response['X-User'] = user
+      return response
+  ```
+
+  **攻撃手法**:
+  - Django 1.8以降のバージョンでは、以下のような攻撃を試みても例外が発生するため、ヘッダーインジェクションを防止できます。
+
+  ```bash
+  http://example.com/set_header?user=admin%0d%0aX-Attack:1
+  ```
+
 #### **Node.js（Express）**
 
 **脆弱なコード例:**
@@ -81,6 +193,8 @@ app.listen(3000);
   ```
 
   これにより、HTTPレスポンスヘッダーが改ざんされ、予期しない動作を引き起こす可能性があります。
+
+
 
 #### **Java（Spring）**
 
